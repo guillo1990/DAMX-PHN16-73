@@ -178,11 +178,11 @@ This mode allows you to set a specific RGB color for each of the four keyboard z
 
 To set all four zones to the same color (`4287f5`):
 
-`echo 4287f5,4287f5,4287f5,4287f5 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/per_zone_mode`
+`echo 4287f5,4287f5,4287f5,4287f5 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/four_zoned_kb/per_zone_mode`
 
 To set each zone with unique colors:
 
-`echo 4287f5,ff5733,33ff57,ff33a6 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/per_zone_mode`
+`echo 4287f5,ff5733,33ff57,ff33a6 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/four_zoned_kb/per_zone_mode`
 
 When reading (`cat`) the `per_zone_mode` file, the current color values for each zone are displayed in the format:
 
@@ -215,7 +215,7 @@ The `four_zone_mode` controls advanced RGB effects for your keyboard, requiring 
     
     Set to **Neon Mode** with speed 1, full brightness, and top-to-bottom direction:
     
-    `echo 3,1,100,2,0,0,0 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/four_zone_mode`
+    `echo 3,1,100,2,0,0,0 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/four_zoned_kb/four_zone_mode`
     
     **Explanation:**
     
