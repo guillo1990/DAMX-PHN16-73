@@ -3,7 +3,7 @@ The code base is still in its early stages, as I’ve just started working on de
 
 Inspired by [acer-predator-turbo](https://github.com/JafarAkhondali/acer-predator-turbo-and-rgb-keyboard-linux-module), which has a similar goal, this project was born out of my own challenges. I faced issues detecting the Turbo key and ended up using [acer_wmi](https://github.com/torvalds/linux/blob/master/drivers/platform/x86/acer-wmi.c), but it lacked key features like RGB , custom fan support, battery limiter, and more. As a result, I decided to implement these missing features in my own project.
 
-## 🚀 One-Time Installation
+## 🚀 Installation
 To begin, identify your current kernel version:
 ```bash
 uname -r
