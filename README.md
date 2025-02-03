@@ -12,13 +12,13 @@ uname -r
 Install the appropriate Linux headers based on your kernel version. This module has been tested with kernel version 6.12. 
 For Arch Linux:
 ```bash
-sudo pacman -S linux612-headers
+sudo pacman -S linux-headers
 ```
 Next, clone the repository and build the module:
 ```bash
 git clone https://github.com/0x7375646F/Linuwu-Sense.git
 cd Linuwu-Sense
-make
+make install
 ```
 The make command will remove the current acer_wmi module and load the patched version.
 
