@@ -9,7 +9,7 @@ To begin, identify your current kernel version:
 uname -r
 ```
 
-Install the appropriate Linux headers based on your kernel version. This module has been tested with kernel version 6.12. 
+Install the appropriate Linux headers based on your kernel version. This module has been tested with kernel version (6.12,6.13) zen. 
 For Arch Linux:
 ```bash
 sudo pacman -S linux-headers
@@ -22,6 +22,10 @@ make install
 ```
 The make command will remove the current acer_wmi module and load the patched version.
 
+To Uninstall:
+```bash
+make uninstall
+```
 > **⚠️ Warning!**
 > ## Use at your own risk! This driver is independently developed through reverse engineering the official PredatorSense app, without any involvement from Acer. It interacts with low-level WMI methods, which may not be tested across all models.
 
@@ -190,7 +194,7 @@ When reading (`cat`) the `per_zone_mode` file, the current color values for each
 
 This indicates the current RGB color for each of the four zones.
 
-### **Four-Zone Mode (`four_zone_mode`) ✨ **
+### ** Four-Zone Mode (`four_zone_mode`) ✨ **
 
 The `four_zone_mode` controls advanced RGB effects for your keyboard, requiring seven parameters:
 
