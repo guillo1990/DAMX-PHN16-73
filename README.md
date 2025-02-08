@@ -177,24 +177,25 @@ This mode allows you to set a specific RGB color for each of the four keyboard z
 - **Parameters:**
     
     - The `per_zone_mode` file accepts four parameters, one for each zone, separated by commas.
+    - The `per_zone_mode` also accepts brightness value.
     - Each parameter represents the RGB value for a specific zone in the format `RRGGBB`.
 - **Example:**
 
-To set all four zones to the same color (`4287f5`):
+To set all four zones to the same color (`4287f5`) and brightness to full:
 
-`echo 4287f5,4287f5,4287f5,4287f5 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/four_zoned_kb/per_zone_mode`
+`echo 4287f5,4287f5,4287f5,4287f5,100 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/four_zoned_kb/per_zone_mode`
 
 To set each zone with unique colors:
 
-`echo 4287f5,ff5733,33ff57,ff33a6 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/four_zoned_kb/per_zone_mode`
+`echo 4287f5,ff5733,33ff57,ff33a6,100 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/four_zoned_kb/per_zone_mode`
 
 When reading (`cat`) the `per_zone_mode` file, the current color values for each zone are displayed in the format:
 
-`4287f5,4287f5,4287f5,4287f5`
+`4287f5,4287f5,4287f5,4287f5,100`
 
 This indicates the current RGB color for each of the four zones.
 
-### ** Four-Zone Mode (`four_zone_mode`) ✨ **
+### **Four-Zone Mode (`four_zone_mode`) ✨**
 
 The `four_zone_mode` controls advanced RGB effects for your keyboard, requiring seven parameters:
 
