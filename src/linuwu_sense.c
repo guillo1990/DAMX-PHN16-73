@@ -3392,6 +3392,7 @@ static acpi_status get_kb_status(struct get_four_zoned_kb_output *out){
 
 struct per_zone_color {
     u64 zone1, zone2, zone3, zone4;
+	int brightness;
 } __packed;
 
 struct kb_state {
@@ -3544,7 +3545,17 @@ static acpi_status get_per_zone_color(struct per_zone_color *output) {
         }
 		*zones[i] = cpu_to_be64(*zones[i]) >> 32;
     }
-    return status;  
+
+	/* Fetching Brighness Value */
+	struct get_four_zoned_kb_output out;
+    status = get_kb_status(&out);
+    if (ACPI_FAILURE(status)) {
+        pr_err("get kb status failed!");
+        return status;
+    }
+	output->brightness = out.gmOutput[2];
+	
+    return AE_OK;  
 }
 
 
@@ -3554,7 +3565,7 @@ static acpi_status set_per_zone_color(struct per_zone_color *input) {
     u64 *zones[] = { &input->zone1, &input->zone2, &input->zone3, &input->zone4 };
     u8 zone_ids[] = { 0x1, 0x2, 0x4, 0x8 };
 
-	status = set_kb_status(0, 0, 100, 0, 0, 0, 0);
+	status = set_kb_status(0, 0, input->brightness, 0, 0, 0, 0);
     if (ACPI_FAILURE(status)) {
         pr_err("Error setting KB status.\n");
         return -ENODEV;
@@ -3582,14 +3593,14 @@ static ssize_t per_zoned_rgb_kb_show(struct device *dev, struct device_attribute
 	if(ACPI_FAILURE(status)){
 		return -ENODEV;
 	}
-	return sprintf(buf,"%06llx,%06llx,%06llx,%06llx\n",output.zone1,output.zone2,output.zone3,output.zone4);
+	return sprintf(buf,"%06llx,%06llx,%06llx,%06llx,%d\n",output.zone1,output.zone2,output.zone3,output.zone4,output.brightness);
 }
 
 static ssize_t per_zoned_rgb_kb_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count) {
     int i = 0;
     size_t len;
     char *token;
-    char str_buf[30];
+    char str_buf[34];
     struct per_zone_color colors;
     char *input_ptr = str_buf;
 	len = min(count, sizeof(str_buf) - 1);
@@ -3614,6 +3625,11 @@ static ssize_t per_zoned_rgb_kb_store(struct device *dev, struct device_attribut
             return -EINVAL;
         }
         i++;
+    }
+
+    if (!token || kstrtoint(token, 10, &colors.brightness) || colors.brightness < 0 || colors.brightness > 100) {
+        pr_err("Invalid brightness value.\n");
+        return -EINVAL;
     }
 
 	/* set per zone colors */
