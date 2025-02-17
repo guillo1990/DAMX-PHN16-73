@@ -502,6 +502,15 @@ static const struct dmi_system_id amw0_whitelist[] __initconst = {
 static const struct dmi_system_id acer_quirks[] __initconst = {
 	{
 		.callback = dmi_matched,
+		.ident = "Acer Nitro ANV15-41",
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "Nitro ANV15-41"),
+		},
+		.driver_data = &quirk_acer_nitro,
+	},
+	{
+		.callback = dmi_matched,
 		.ident = "Acer Nitro ANV15-51",
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
