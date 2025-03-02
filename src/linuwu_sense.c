@@ -2119,7 +2119,7 @@ static int acer_thermal_profile_change(void)
 		if (tp != ACER_PREDATOR_V4_THERMAL_PROFILE_TURBO_WMI)
 			last_non_turbo_profile = tp;
 
-		platform_profile_notify(&platform_profile_handler);
+		platform_profile_notify();
 	}
 
 	return 0;
@@ -3824,7 +3824,7 @@ static int acer_platform_probe(struct platform_device *device)
 
 error_hwmon:
 	if (platform_profile_support)
-		platform_profile_remove(&platform_profile_handler);
+		platform_profile_remove();
 error_platform_profile:
 	acer_rfkill_exit();
 error_rfkill:
@@ -3862,7 +3862,7 @@ static void acer_platform_remove(struct platform_device *device)
 	acer_rfkill_exit();
 
 	if (platform_profile_support)
-		platform_profile_remove(&platform_profile_handler);
+		platform_profile_remove();
 }
 
 #ifdef CONFIG_PM_SLEEP
