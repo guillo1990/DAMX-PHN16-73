@@ -436,10 +436,13 @@ static struct quirk_entry quirk_acer_predator_phn16_71 = {
 static struct quirk_entry quirk_acer_nitro = {
 	.nitro_sense = 1,
 };
+
+/*All notebooks of the AN16 series come with a four zone rgb keyboard*/
 static struct quirk_entry quirk_acer_nitro_an16_series = {
 	.nitro_sense = 1,
 	.four_zone_kb=1
 };
+
 static struct quirk_entry quirk_acer_predator_v4 = {
 	.predator_v4 = 1,
 };
