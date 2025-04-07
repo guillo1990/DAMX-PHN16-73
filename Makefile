@@ -1,10 +1,10 @@
 obj-m := src/linuwu_sense.o
 
 KVER  ?= $(shell uname -r)
-KDIR  ?= /lib/modules/$(KVER)/build
+KDIR  := /lib/modules/$(KVER)/build
 PWD   := $(shell pwd)
 
-MDIR  ?= /lib/modules/$(KVER)/kernel/drivers/platform/x86
+MDIR  := /lib/modules/$(KVER)/kernel/drivers/platform/x86
 MODNAME := linuwu_sense
 
 all:
