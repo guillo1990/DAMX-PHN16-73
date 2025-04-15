@@ -57,8 +57,12 @@ install: all
 		echo "Detected model directory: $$model_path"; \
 		conf_file="/etc/tmpfiles.d/$(MODNAME).conf"; \
 		[ -f $$conf_file ] || sudo touch $$conf_file; \
-		for f in backlight_timeout battery_calibration battery_limiter boot_animation_sound fan_speed; do \
+		for f in backlight_timeout battery_calibration battery_limiter boot_animation_sound fan_speed lcd_override usb_charging; do \
 			entry="f /sys/module/$(MODNAME)/drivers/platform:acer-wmi/acer-wmi/$$model_path/$$f 0660 root $(MODNAME)"; \
+			grep -qxF "$$entry" $$conf_file || echo "$$entry" | sudo tee -a $$conf_file > /dev/null; \
+		done; \
+		for z in four_zone_mode per_zone_mode; do \
+			entry="f /sys/module/$(MODNAME)/drivers/platform:acer-wmi/acer-wmi/four_zoned_kb/$$z 0660 root $(MODNAME)"; \
 			grep -qxF "$$entry" $$conf_file || echo "$$entry" | sudo tee -a $$conf_file > /dev/null; \
 		done; \
 		sudo systemd-tmpfiles --create $$conf_file; \
