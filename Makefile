@@ -6,6 +6,7 @@ PWD   := $(shell pwd)
 
 MDIR  := /lib/modules/$(KVER)/kernel/drivers/platform/x86
 MODNAME := linuwu_sense
+REAL_USER := $(shell echo $${SUDO_USER:-$$(whoami)})
 
 all:
 	$(MAKE) -C $(KDIR) M=$(PWD) modules
@@ -22,6 +23,15 @@ uninstall:
 	@sudo systemctl daemon-reload
 	@sudo rmmod $(MODNAME) 2>/dev/null || true
 	@sudo modprobe acer_wmi
+	@echo "Removing current user from linuwu_sense group if exists..."
+	@if getent group linuwu_sense >/dev/null; then \
+		sudo gpasswd -d $(REAL_USER) linuwu_sense || true; \
+		sudo groupdel linuwu_sense || true; \
+	else \
+		echo "Group linuwu_sense does not exist."; \
+	fi
+	@sudo rm -f /etc/tmpfiles.d/$(MODNAME).conf
+	@echo "Uninstalled $(MODNAME) and cleaned up related configuration."
 
 install: all
 	@sudo rmmod acer_wmi 2>/dev/null || true
@@ -35,5 +45,25 @@ install: all
 	@sudo systemctl daemon-reload
 	@sudo systemctl enable linuwu_sense.service
 	@sudo systemctl start linuwu_sense.service
+	@echo "Setting up group and permissions..."
+	@echo "Detected user: $(REAL_USER)"
+	@if ! getent group linuwu_sense >/dev/null; then \
+		sudo groupadd linuwu_sense; \
+	fi; 
+	sudo usermod -aG linuwu_sense $(REAL_USER)
+	@echo "Setting permissions via tmpfiles..."
+	@model_path=$$(ls /sys/module/$(MODNAME)/drivers/platform:acer-wmi/acer-wmi/ | grep -E 'predator_sense|nitro_sense' || true); \
+	if [ -n "$$model_path" ]; then \
+		echo "Detected model directory: $$model_path"; \
+		conf_file="/etc/tmpfiles.d/$(MODNAME).conf"; \
+		[ -f $$conf_file ] || sudo touch $$conf_file; \
+		for f in backlight_timeout battery_calibration battery_limiter boot_animation_sound fan_speed; do \
+			entry="f /sys/module/$(MODNAME)/drivers/platform:acer-wmi/acer-wmi/$$model_path/$$f 0660 root $(MODNAME)"; \
+			grep -qxF "$$entry" $$conf_file || echo "$$entry" | sudo tee -a $$conf_file > /dev/null; \
+		done; \
+		sudo systemd-tmpfiles --create $$conf_file; \
+	else \
+		echo "Warning: Could not detect predator_sense or nitro_sense in sysfs."; \
+	fi
 	@echo "Module $(MODNAME) installed and configured to load at boot."
 
