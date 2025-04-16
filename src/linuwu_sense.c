@@ -3824,8 +3824,6 @@
      return 0;
  
  error_hwmon:
-     if (platform_profile_support)
-         platform_profile_remove(&device->dev);
  error_platform_profile:
      acer_rfkill_exit();
  error_rfkill:
@@ -3861,9 +3859,6 @@
      }
  
      acer_rfkill_exit();
- 
-     if (platform_profile_support)
-         platform_profile_remove(&device->dev);
  }
  
  #ifdef CONFIG_PM_SLEEP
