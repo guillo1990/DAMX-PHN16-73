@@ -9,7 +9,7 @@ To begin, identify your current kernel version:
 uname -r
 ```
 
-Install the appropriate Linux headers based on your kernel version. This module has been tested with kernel version (6.12,6.13) zen. 
+Install the appropriate Linux headers based on your kernel version. This module has been tested with kernel version (6.12,6.13,6.14) zen. 
 For Arch Linux:
 ```bash
 sudo pacman -S linux-headers
