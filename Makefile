@@ -57,14 +57,22 @@ install: all
 		echo "Detected model directory: $$model_path"; \
 		conf_file="/etc/tmpfiles.d/$(MODNAME).conf"; \
 		[ -f $$conf_file ] || sudo touch $$conf_file; \
-		for f in backlight_timeout battery_calibration battery_limiter boot_animation_sound fan_speed lcd_override usb_charging; do \
+		if echo "$$model_path" | grep -q "nitro_sense"; then \
+			supported_fields="fan_speed battery_limiter battery_calibration usb_charging"; \
+		else \
+			supported_fields="backlight_timeout battery_calibration battery_limiter boot_animation_sound fan_speed lcd_override usb_charging"; \
+		fi; \
+		for f in $$supported_fields; do \
 			entry="f /sys/module/$(MODNAME)/drivers/platform:acer-wmi/acer-wmi/$$model_path/$$f 0660 root $(MODNAME)"; \
 			grep -qxF "$$entry" $$conf_file || echo "$$entry" | sudo tee -a $$conf_file > /dev/null; \
 		done; \
-		for z in four_zone_mode per_zone_mode; do \
-			entry="f /sys/module/$(MODNAME)/drivers/platform:acer-wmi/acer-wmi/four_zoned_kb/$$z 0660 root $(MODNAME)"; \
-			grep -qxF "$$entry" $$conf_file || echo "$$entry" | sudo tee -a $$conf_file > /dev/null; \
-		done; \
+		kb_base="/sys/module/$(MODNAME)/drivers/platform:acer-wmi/acer-wmi/four_zoned_kb"; \
+		if [ -d "$$kb_base" ]; then \
+			for z in four_zone_mode per_zone_mode; do \
+				entry="f $$kb_base/$$z 0660 root $(MODNAME)"; \
+				grep -qxF "$$entry" $$conf_file || echo "$$entry" | sudo tee -a $$conf_file > /dev/null; \
+			done; \
+		fi; \
 		sudo systemd-tmpfiles --create $$conf_file; \
 	else \
 		echo "Warning: Could not detect predator_sense or nitro_sense in sysfs."; \
