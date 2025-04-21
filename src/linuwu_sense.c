@@ -421,7 +421,7 @@ enum acer_wmi_predator_v4_oc {
                       | ACER_CAP_TURBO_FAN;
  
      if (quirks->nitro_sense)
-         interface->capability |= ACER_CAP_FAN_SPEED_READ | ACER_CAP_NITRO_SENSE;
+         interface->capability |= ACER_CAP_PLATFORM_PROFILE | ACER_CAP_FAN_SPEED_READ | ACER_CAP_NITRO_SENSE;
  
      if (quirks->predator_v4)
          interface->capability |= ACER_CAP_PLATFORM_PROFILE |
