@@ -44,6 +44,24 @@ predator_sense – This directory includes all the features, excluding the custo
 four_zoned_kb – If your keyboard is four-zoned, this directory provides support for it. Unfortunately, there is no support for per-key RGB keyboards.
 Here is how to interact with the Virtual Filesystems (VFS) mounted in this path:
 
+### **0. Thermal Profiles (Nitro users especially who don't have switch key) 🚀**
+
+Some acer nitro laptops don't come up with the thermal profile switch button in this case we manually need to set it:
+
+To probe the current thermal profile:
+
+`cat /sys/firmware/acpi/platform_profile`
+
+To check the supported thermal profile:
+
+`cat /sys/firmware/acpi/platform_profile_choices`
+
+To switch the platform profile:
+
+`echo balanced | sudo tee /sys/firmware/acpi/platform_profile`
+
+Replace the balanced with the supported profile you have.
+
 #### **1. Backlight Timeout ⏰**
 
 This feature turns off the keyboard RGB after 30 seconds of idle mode.
