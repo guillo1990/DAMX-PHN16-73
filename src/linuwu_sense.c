@@ -2612,9 +2612,9 @@ enum acer_wmi_predator_v4_oc {
          break;
      case WMID_GAMING_TURBO_KEY_EVENT:
         pr_info("pressed turbo button - %d\n", return_value.key_num);
-         if (return_value.key_num == 0x4)
+         if (return_value.key_num == 0x4  && !has_cap(ACER_CAP_NITRO_SENSE_V4))
              acer_toggle_turbo();
-         if (return_value.key_num == 0x5 && has_cap(ACER_CAP_PLATFORM_PROFILE))
+         if ((return_value.key_num == 0x5 || (return_value.key_num == 0x4 && has_cap(ACER_CAP_NITRO_SENSE_V4))) && has_cap(ACER_CAP_PLATFORM_PROFILE))
              acer_thermal_profile_change();
          break;
      case WMID_AC_EVENT:
