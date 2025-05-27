@@ -251,9 +251,12 @@ The `four_zone_mode` controls advanced RGB effects for your keyboard, requiring 
     - `0`: Blue (black for Neon)
  
 The thermal and fan profiles will be saved and loaded on each reboot, ensuring that the settings remain persistent across restarts.
+## GUI:
+- [Div Acer Manager Max By PXDiv](https://github.com/PXDiv/Div-Acer-Manager-Max)
+- [GUI LinuwuSense By KumarVivek](https://github.com/kumarvivek1752/Linuwu-Sense-GUI/tree/main)
 
 ## 🚧 Roadmap:
-- [x] GUI for keyboard rgb controls to make it noob friendly. [GUI LinuwuSense By KumarVivek](https://github.com/kumarvivek1752/Linuwu-Sense-GUI/tree/main)
+- [x] GUI for keyboard rgb controls to make it noob friendly.
 - [x] Module Persistence After Reboot.
 - [ ] Custom Boot Logo Feature Support.
 - [ ] More device support currently only ( PHN16-71 ) is fully supported.
