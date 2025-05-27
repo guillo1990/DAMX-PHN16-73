@@ -485,6 +485,11 @@ enum acer_wmi_predator_v4_oc {
     .four_zone_kb = 1,
  };
 
+  static struct quirk_entry quirk_acer_nitro_an16_43 = {
+    .nitro_v4 = 1,
+    .four_zone_kb = 1,
+ };
+
  static struct quirk_entry quirk_acer_nitro = {
      .nitro_sense = 1,
  };
@@ -556,6 +561,15 @@ enum acer_wmi_predator_v4_oc {
   * that those machines are supported by acer-wmi driver.
   */
  static const struct dmi_system_id acer_quirks[] __initconst = {
+     {
+         .callback = dmi_matched,
+         .ident = "Acer Nitro AN16-43",
+         .matches = {
+             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+             DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN16-43"),
+         },
+         .driver_data = &quirk_acer_nitro_an16_43,
+     },
      {
          .callback = dmi_matched,
          .ident = "Acer Nitro AN16-41",
