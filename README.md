@@ -1,118 +1,135 @@
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/6d383e82-8221-438b-9d6d-a19e998fcc59" alt="icon" width="80" style="vertical-align: middle;">
-</p>
+# DAMX PHN16-73
 
-<h1 align="center">
-  Div Acer Manager Max
-</h1>
+Private fork of [Div Acer Manager Max](https://github.com/PXDiv/Div-Acer-Manager-Max) and [Linuwu Sense](https://github.com/PXDiv/Div-Linuwu-Sense) for the Acer Predator Helios Neo 16 AI `PHN16-73` on CachyOS with KDE Plasma.
 
-**Div Acer Manager Max** is a feature-rich Linux GUI utility for Acer laptops powered by the incredible [Linuwu Sense](https://github.com/0x7375646F/Linuwu-Sense) drivers. It replicates and expands on Acer’s NitroSense and PredatorSense capabilities on Linux with full fan control, performance modes, battery optimization, backlight settings, and more — all wrapped in a modern Avalonia-based UI.
+It packages the patched Linuwu Sense driver in `driver/`, a DAMX daemon that uses the driver-specific thermal-profile interface, and a DAMX GUI that follows profile changes made outside the application.
 
-This private fork contains the Acer Predator PHN16-73 driver adaptation and KDE Power Profiles synchronization. See [PHN16-73.md](PHN16-73.md) for installation, validation, rollback, and upstream attribution.
+> [!WARNING]
+> This fork was developed and tested only on `Acer Predator PHN16-73`. It changes low-level WMI/EC settings. Keep the rollback backup, do not use it on another model without adapting and testing the driver, and reboot after installing or rolling back the DKMS module.
 
-> [!CAUTION]
-> Project is under active development.
+## What This Fork Changes
 
-![Title Image](https://github.com/user-attachments/assets/a60898a6-a2b8-432e-b5a2-8d0a45c63484)
+- Adds native DMI support for `Acer Predator PHN16-73` using the Predator v4 quirk.
+- Does not enable four-zone keyboard RGB for this model.
+- Adds `damx_thermal_profile` and `damx_thermal_profile_choices` sysfs interfaces for DAMX.
+- Keeps KDE Power Profiles and DAMX thermal profiles synchronized.
+- Shows Quiet in DAMX on both battery and AC.
+- Refreshes the DAMX GUI every second while it is open, without writing an externally selected profile back to KDE.
+- Builds the module through DKMS for every installed kernel with headers. CachyOS kernels are built with LLVM.
 
+## Profile Mapping
 
-<h4 align="center">
-⭐ Please star this repository to show support. It motivates me to make the project better for everyone
-</h4>  
+| KDE Power Profiles | DAMX on battery | DAMX on AC |
+| --- | --- | --- |
+| Power Save | Quiet | Quiet |
+| Balanced | Balanced | Balanced |
+| Performance | Balanced | Performance |
 
-## ✨ Features
+DAMX Turbo maps to KDE Performance. Turbo is intentionally available only from DAMX while connected to AC.
 
-### ✅ Fully Implemented
+## Clean CachyOS Installation
 
-* 🔋 **Performance / Thermal Profiles**
-  Eco, Silent, Balanced, Performance, Turbo — automatically adjusted based on AC/battery status
-  (e.g., Turbo hidden when on battery or unsupported)
+These steps assume a fresh CachyOS KDE installation and an active Internet connection.
 
-* 🌡 **Fan Control**
-  Manual and Auto fan speed modes
-  Manual disabled automatically when in Quiet profile
+### 1. Check the machine and kernel
 
-* 💡 **LCD Override Setting**
-  Direct control over LCD power behavior
+Confirm the model and running kernel before making any change:
 
-* 🎨 **Keyboard Backlight Timeout Control**
-  Customize the keyboard backlight timeout
+```bash
+cat /sys/class/dmi/id/product_name
+uname -r
+```
 
-* 🔊 **Boot Animation and Sound Toggle**
-  Enable/disable Acer's startup animations and sounds
+The product name must be `Predator PHN16-73`. Install headers matching every kernel that you intend the DKMS module to support. For the default CachyOS kernel:
 
-* 💻 **Live System Info Display**
-  Shows real-time performance profile, fan settings, calibration state, and more
+```bash
+sudo pacman -Syu --needed base-devel dkms git python power-profiles-daemon linux-cachyos-headers
+```
 
-* 🧠 **Smart Daemon (Low Resource Use)**
+If `uname -r` does not belong to the default CachyOS kernel, install the corresponding headers for that kernel instead. Reboot after a kernel update before continuing.
 
-  * Auto-detects feature support per device
-  * Communicates with GUI in real-time
-  * Lightweight: uses \~10MB RAM
-  * Can run **independently** of GUI
-  * Recursive restart to fix software issues similar to those on Windows
+### 2. Install DAMX upstream without its driver
 
-* 🖥️ **Modern GUI**
+This fork patches an existing DAMX installation. Download and install DAMX from the [upstream releases](https://github.com/PXDiv/Div-Acer-Manager-Max/releases), selecting **Install without Drivers** in its installer. This creates the GUI installation that `install-gui-quiet-battery.sh` replaces.
 
-  * Avalonia-based, clean and responsive
-  * Realtime Monitoring with Dashboard and accurate Tempreature Readings
-  * Dynamic UI hides unsupported features
-  * Real-time feedback from daemon
+Do not install the upstream Linuwu Sense driver: this repository supplies its own patched DKMS driver.
 
-## 🧭 Compatibilty
-Check your deviced compatibility here: [Compatibility List](https://github.com/PXDiv/Div-Acer-Manager-Max/blob/main/Compatibility.md)
+### 3. Clone this fork and build the GUI
 
-> Even if not here, DAMX will still work on most devices. Be sure to put a issue to request your model to be added in the compatiblity list if working.
+Install a .NET 9 SDK from the CachyOS/Arch repositories or the official Microsoft packages, then clone the repository:
 
-## 🖥️ Installation
+```bash
+git clone https://github.com/guillo1990/DAMX-PHN16-73.git
+cd DAMX-PHN16-73
+dotnet publish DivAcerManagerMax/DivAcerManagerMax.csproj \
+  -c Release \
+  -f net9.0 \
+  -r linux-x64 \
+  --self-contained true \
+  /p:PublishSingleFile=true \
+  /p:IncludeNativeLibrariesForSelfExtract=true \
+  /p:IncludeAllContentForSelfExtract=true
+```
 
-1. Download the Latest release package from the Release section
-   
-2. Extract the Package and set the setup script to be executable
-   
-3. Open the setup script with a termial (Right click the setup file to run it as a Program or in Terminal)
+The publish command creates `DivAcerManagerMax/bin/Release/net9.0/linux-x64/publish/DivAcerManagerMax`, which is intentionally not committed to Git.
 
-4. Choose the option 1 from the menu to install:
+### 4. Install the profile synchronization and GUI
 
-   * `1` → Install
-   * `2` → Install without Drivers
-   * `3` → Uninstall
-   * `4` → Reinstall/Update
+Run the installers from the repository root:
 
-5. And a Reboot
+```bash
+sudo ./install-profile-sync.sh
+sudo ./install-gui-quiet-battery.sh
+```
 
-That’s it!
+`install-profile-sync.sh` installs the DKMS source, replaces the DAMX daemon service, blacklists the stock `acer_wmi` module, and creates a backup in `/var/backups/damx-profile-sync`. `install-gui-quiet-battery.sh` backs up and replaces the existing DAMX GUI.
 
-## 🖥️ Troubleshooting
-You can check the logs at /var/log/DAMX_Daemon_Log.log
+Do not manually unload or reload `linuwu_sense`; reboot instead.
 
-If you get UNKNOWN as Laptop type, try restarting (it happens somethings) 
-But if it still happenes that might mean the Drivers Installation failed, Make sure you have the approprite kernel headers to compile the drivers.
+### 5. Reboot and validate
 
-Also, check out the [FAQ page](https://github.com/PXDiv/Div-Acer-Manager-Max/blob/main/FAQ.md) before opening any issues.
+Reboot to load the new DKMS module, then verify the driver and service:
 
-Please open a new issue or discussion and include the logs to get support and help the project grow if you need any info, report a bug or just give ideas for the future versions of DAMX
+```bash
+cat /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/damx_thermal_profile
+systemctl status damx-daemon.service
+```
 
-## Screenshots 
-![image](https://github.com/user-attachments/assets/10d44e8c-14e4-4441-b60c-538af1840cf6)
-![image](https://github.com/user-attachments/assets/89217b26-b94c-4c78-8fe8-3de2b22a7095)
-![image](https://github.com/user-attachments/assets/72a7b944-5efc-4520-83b6-88069fc05723)
-![image](https://github.com/user-attachments/assets/f9a9d663-70c6-482e-a0c4-15a4ea08a8d2)
+Run the complete profile test once on AC and once on battery:
 
+```bash
+./validate-profile-sync.sh
+```
 
-## ❤️ Powered by Linuwu
+The test changes profiles temporarily and restores the initial profile on exit.
 
-The custom drivers for this project [Div-Linuwu Sense project](https://github.com/PXDiv/Div-Linuwu-Sense) is built entirely on top of the [Linuwu Sense](https://github.com/0x7375646F/Linuwu-Sense) drivers — huge thanks to their developers for enabling hardware-level access on Acer laptops.
+## Daily Use
 
-## 🤝 Contributing
+- Use KDE Power Profiles for Power Save, Balanced, and Performance.
+- Use DAMX for Quiet, Balanced, Performance, fan controls, and Turbo on AC.
+- DAMX updates its selected thermal-profile button within about one second after a KDE profile change.
+- DAMX does not need to remain open for KDE and daemon synchronization to work.
 
-* Report bugs or request features via GitHub Issues
-* Submit pull requests to improve code or UI
-* Help test on different Acer laptop models
+## Rollback
 
+The installers preserve the previous DAMX and DKMS state. To restore it:
 
+```bash
+sudo ./rollback-profile-sync.sh
+sudo ./rollback-gui-quiet-battery.sh
+sudo reboot
+```
 
-## 📄 License
+The profile rollback uses the path recorded in `/var/backups/damx-profile-sync/latest`. The GUI rollback uses `/var/backups/damx-profile-sync/latest-gui`.
 
-This project is licensed under the **GNU General Public License v3.0**.  
-See the [LICENSE](LICENSE) file for details.
+## Troubleshooting
+
+- Check daemon logs: `journalctl -u damx-daemon.service -b`.
+- Confirm the active module: `modinfo linuwu_sense | grep -E 'version|srcversion'`.
+- Confirm the interface exists: `cat /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/damx_thermal_profile_choices`.
+- If DKMS fails, ensure headers exist for the affected kernel under `/lib/modules/<kernel>/build`.
+- If DAMX reports `UNKNOWN`, confirm that the system DMI product name is exactly `Predator PHN16-73` and reboot rather than attempting a module hot reload.
+
+## Upstream and License
+
+This fork retains the GPL-3.0 license of the upstream projects. It preserves the original DAMX history and imports Linuwu Sense under `driver/` with its upstream history. See [LICENSE](LICENSE) for the complete license text.
