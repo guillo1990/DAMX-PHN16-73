@@ -8,6 +8,8 @@
 
 **Div Acer Manager Max** is a feature-rich Linux GUI utility for Acer laptops powered by the incredible [Linuwu Sense](https://github.com/0x7375646F/Linuwu-Sense) drivers. It replicates and expands on Acer’s NitroSense and PredatorSense capabilities on Linux with full fan control, performance modes, battery optimization, backlight settings, and more — all wrapped in a modern Avalonia-based UI.
 
+This private fork contains the Acer Predator PHN16-73 driver adaptation and KDE Power Profiles synchronization. See [PHN16-73.md](PHN16-73.md) for installation, validation, rollback, and upstream attribution.
+
 > [!CAUTION]
 > Project is under active development.
 

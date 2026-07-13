@@ -48,6 +48,7 @@
 #include <linux/bitfield.h>
 #include <linux/bitmap.h>
 #include <linux/delay.h>
+#include <linux/mutex.h>
 
 #include <linux/version.h>
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6,12,0)
@@ -459,6 +460,7 @@ struct quirk_entry
     u8 nitro_v4;
     u8 nitro_sense;
     u8 four_zone_kb;
+    u8 fixed_platform_profiles;
 };
 
 static struct quirk_entry *quirks;
@@ -538,6 +540,12 @@ static struct quirk_entry quirk_acer_predator_phn16_71 = {
 static struct quirk_entry quirk_acer_predator_phn16_72 = {
     .predator_v4 = 1,
     .four_zone_kb = 1,
+};
+
+static struct quirk_entry quirk_acer_predator_phn16_73 = {
+    .predator_v4 = 1,
+    .four_zone_kb = 0,
+    .fixed_platform_profiles = 1,
 };
 
 static struct quirk_entry quirk_acer_nitro_an16_41 = {
@@ -808,6 +816,15 @@ static const struct dmi_system_id acer_quirks[] __initconst = {
     },
     {
         .callback = dmi_matched,
+        .ident = "Acer Predator PHN16-73",
+        .matches = {
+            DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+            DMI_MATCH(DMI_PRODUCT_NAME, "Predator PHN16-73"),
+        },
+        .driver_data = &quirk_acer_predator_phn16_73,
+    },
+    {
+        .callback = dmi_matched,
         .ident = "Acer Predator PH16-71",
         .matches = {
             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
@@ -955,6 +972,36 @@ enum acer_predator_v4_thermal_profile
     ACER_PREDATOR_V4_THERMAL_PROFILE_TURBO = 0x05,
     ACER_PREDATOR_V4_THERMAL_PROFILE_ECO = 0x06,
 };
+
+static int cached_thermal_profile = ACER_PREDATOR_V4_THERMAL_PROFILE_BALANCED;
+static int requested_thermal_profile = ACER_PREDATOR_V4_THERMAL_PROFILE_BALANCED;
+static enum platform_profile_option cached_platform_profile = PLATFORM_PROFILE_BALANCED;
+static DEFINE_MUTEX(thermal_profile_lock);
+
+static enum platform_profile_option acer_thermal_profile_to_platform(int tp)
+{
+    switch (tp)
+    {
+    case ACER_PREDATOR_V4_THERMAL_PROFILE_QUIET:
+    case ACER_PREDATOR_V4_THERMAL_PROFILE_ECO:
+        return PLATFORM_PROFILE_LOW_POWER;
+    case ACER_PREDATOR_V4_THERMAL_PROFILE_BALANCED:
+        return PLATFORM_PROFILE_BALANCED;
+    case ACER_PREDATOR_V4_THERMAL_PROFILE_PERFORMANCE:
+    case ACER_PREDATOR_V4_THERMAL_PROFILE_TURBO:
+    default:
+        return PLATFORM_PROFILE_PERFORMANCE;
+    }
+}
+
+static bool acer_thermal_profile_is_valid(int tp)
+{
+    return tp == ACER_PREDATOR_V4_THERMAL_PROFILE_QUIET ||
+           tp == ACER_PREDATOR_V4_THERMAL_PROFILE_BALANCED ||
+           tp == ACER_PREDATOR_V4_THERMAL_PROFILE_PERFORMANCE ||
+           tp == ACER_PREDATOR_V4_THERMAL_PROFILE_TURBO ||
+           tp == ACER_PREDATOR_V4_THERMAL_PROFILE_ECO;
+}
 
 /* Find which quirks are needed for a particular vendor/ model pair */
 static void __init find_quirks(void)
@@ -2252,6 +2299,14 @@ acer_predator_v4_platform_profile_get(struct device *dev,
     u8 tp;
     int err;
 
+    if (quirks->fixed_platform_profiles)
+    {
+        mutex_lock(&thermal_profile_lock);
+        *profile = cached_platform_profile;
+        mutex_unlock(&thermal_profile_lock);
+        return 0;
+    }
+
     err = WMID_gaming_get_misc_setting(ACER_WMID_MISC_SETTING_PLATFORM_PROFILE, &tp);
     if (err)
         return err;
@@ -2287,59 +2342,108 @@ acer_predator_v4_platform_profile_set(struct device *dev,
     int err, tp;
     acpi_status status;
     u64 on_AC;
+    enum platform_profile_option requested_profile = profile;
 
-    /* Check Power Source */
+    mutex_lock(&thermal_profile_lock);
     status = WMI_gaming_execute_u64(
         ACER_WMID_GET_GAMING_SYS_INFO_METHODID,
         ACER_WMID_CMD_GET_PREDATOR_V4_BAT_STATUS, &on_AC);
 
     if (ACPI_FAILURE(status))
-        return -EIO;
-
-    /* Check power source */
-    /* Blocking these modes since in official version this is not supported when its not plugged in AC! */
-    if (!on_AC && (profile == PLATFORM_PROFILE_PERFORMANCE || profile == PLATFORM_PROFILE_BALANCED_PERFORMANCE || profile == PLATFORM_PROFILE_QUIET))
     {
-        return -EOPNOTSUPP;
+        mutex_unlock(&thermal_profile_lock);
+        return -EIO;
     }
 
-    /* turn the fan down i mean its quiet mode | eco mode after all*/
-    if (profile == PLATFORM_PROFILE_QUIET || profile == PLATFORM_PROFILE_LOW_POWER)
+    if (quirks->fixed_platform_profiles)
     {
-        acpi_status stat = acer_set_fan_speed(0, 0);
-        if (ACPI_FAILURE(stat))
+        switch (profile)
         {
+        case PLATFORM_PROFILE_LOW_POWER:
+            tp = ACER_PREDATOR_V4_THERMAL_PROFILE_QUIET;
+            break;
+        case PLATFORM_PROFILE_BALANCED:
+            tp = ACER_PREDATOR_V4_THERMAL_PROFILE_BALANCED;
+            break;
+        case PLATFORM_PROFILE_PERFORMANCE:
+            tp = on_AC ? ACER_PREDATOR_V4_THERMAL_PROFILE_PERFORMANCE
+                       : ACER_PREDATOR_V4_THERMAL_PROFILE_BALANCED;
+            break;
+        default:
+            mutex_unlock(&thermal_profile_lock);
+            return -EOPNOTSUPP;
+        }
+    }
+    else
+    {
+        if (!on_AC && (profile == PLATFORM_PROFILE_PERFORMANCE || profile == PLATFORM_PROFILE_BALANCED_PERFORMANCE || profile == PLATFORM_PROFILE_QUIET))
+        {
+            mutex_unlock(&thermal_profile_lock);
+            return -EOPNOTSUPP;
+        }
+
+        switch (profile)
+        {
+        case PLATFORM_PROFILE_PERFORMANCE:
+            tp = ACER_PREDATOR_V4_THERMAL_PROFILE_TURBO;
+            break;
+        case PLATFORM_PROFILE_BALANCED_PERFORMANCE:
+            tp = ACER_PREDATOR_V4_THERMAL_PROFILE_PERFORMANCE;
+            break;
+        case PLATFORM_PROFILE_BALANCED:
+            tp = ACER_PREDATOR_V4_THERMAL_PROFILE_BALANCED;
+            break;
+        case PLATFORM_PROFILE_QUIET:
+            tp = ACER_PREDATOR_V4_THERMAL_PROFILE_QUIET;
+            break;
+        case PLATFORM_PROFILE_LOW_POWER:
+            tp = ACER_PREDATOR_V4_THERMAL_PROFILE_ECO;
+            break;
+        default:
+            mutex_unlock(&thermal_profile_lock);
+            return -EOPNOTSUPP;
+        }
+    }
+
+    if (tp == ACER_PREDATOR_V4_THERMAL_PROFILE_QUIET || tp == ACER_PREDATOR_V4_THERMAL_PROFILE_ECO)
+    {
+        status = acer_set_fan_speed(0, 0);
+        if (ACPI_FAILURE(status))
+        {
+            mutex_unlock(&thermal_profile_lock);
             return -EIO;
         }
     }
 
-    switch (profile)
-    {
-    case PLATFORM_PROFILE_PERFORMANCE:
-        tp = ACER_PREDATOR_V4_THERMAL_PROFILE_TURBO;
-        break;
-    case PLATFORM_PROFILE_BALANCED_PERFORMANCE:
-        tp = ACER_PREDATOR_V4_THERMAL_PROFILE_PERFORMANCE;
-        break;
-    case PLATFORM_PROFILE_BALANCED:
-        tp = ACER_PREDATOR_V4_THERMAL_PROFILE_BALANCED;
-        break;
-    case PLATFORM_PROFILE_QUIET:
-        tp = ACER_PREDATOR_V4_THERMAL_PROFILE_QUIET;
-        break;
-    case PLATFORM_PROFILE_LOW_POWER:
-        tp = ACER_PREDATOR_V4_THERMAL_PROFILE_ECO;
-        break;
-    default:
-        return -EOPNOTSUPP;
-    }
-
     err = WMID_gaming_set_misc_setting(ACER_WMID_MISC_SETTING_PLATFORM_PROFILE, tp);
     if (err)
+    {
+        mutex_unlock(&thermal_profile_lock);
         return err;
+    }
 
+    cached_thermal_profile = tp;
+    cached_platform_profile = requested_profile;
+    if (quirks->fixed_platform_profiles)
+    {
+        switch (requested_profile)
+        {
+        case PLATFORM_PROFILE_LOW_POWER:
+            requested_thermal_profile = ACER_PREDATOR_V4_THERMAL_PROFILE_QUIET;
+            break;
+        case PLATFORM_PROFILE_BALANCED:
+            requested_thermal_profile = ACER_PREDATOR_V4_THERMAL_PROFILE_BALANCED;
+            break;
+        case PLATFORM_PROFILE_PERFORMANCE:
+            requested_thermal_profile = ACER_PREDATOR_V4_THERMAL_PROFILE_PERFORMANCE;
+            break;
+        default:
+            break;
+        }
+    }
     if (tp != acer_predator_v4_max_perf)
         last_non_turbo_profile = tp;
+    mutex_unlock(&thermal_profile_lock);
 
     return 0;
 }
@@ -2349,6 +2453,16 @@ acer_predator_v4_platform_profile_probe(void *drvdata, unsigned long *choices)
 {
     unsigned long supported_profiles;
     int err;
+
+    if (quirks->fixed_platform_profiles)
+    {
+        set_bit(PLATFORM_PROFILE_LOW_POWER, choices);
+        set_bit(PLATFORM_PROFILE_BALANCED, choices);
+        set_bit(PLATFORM_PROFILE_PERFORMANCE, choices);
+        acer_predator_v4_max_perf = ACER_PREDATOR_V4_THERMAL_PROFILE_TURBO;
+        last_non_turbo_profile = ACER_PREDATOR_V4_THERMAL_PROFILE_BALANCED;
+        return 0;
+    }
 
     // If enable_all, predator_v4 or nitro_v4 is set, provide all profiles
     if (enable_all || predator_v4 || nitro_v4)
@@ -2361,7 +2475,7 @@ acer_predator_v4_platform_profile_probe(void *drvdata, unsigned long *choices)
         set_bit(PLATFORM_PROFILE_PERFORMANCE, choices);
 
         // Set defaults
-        acer_predator_v4_max_perf = ACER_PREDATOR_V4_THERMAL_PROFILE_PERFORMANCE;
+        acer_predator_v4_max_perf = ACER_PREDATOR_V4_THERMAL_PROFILE_TURBO;
         last_non_turbo_profile = ACER_PREDATOR_V4_THERMAL_PROFILE_BALANCED;
         return 0;
     }
@@ -2520,6 +2634,127 @@ static int acer_platform_profile_setup(struct platform_device *device)
     return 0;
 }
 
+static int acer_fixed_thermal_profile_change(void)
+{
+    acpi_status status;
+    u64 on_AC;
+    int err, tp;
+
+    mutex_lock(&thermal_profile_lock);
+    status = WMI_gaming_execute_u64(
+        ACER_WMID_GET_GAMING_SYS_INFO_METHODID,
+        ACER_WMID_CMD_GET_PREDATOR_V4_BAT_STATUS, &on_AC);
+    if (ACPI_FAILURE(status))
+    {
+        mutex_unlock(&thermal_profile_lock);
+        return -EIO;
+    }
+
+    if (!on_AC)
+    {
+        tp = cached_thermal_profile == ACER_PREDATOR_V4_THERMAL_PROFILE_QUIET
+                 ? ACER_PREDATOR_V4_THERMAL_PROFILE_BALANCED
+                 : ACER_PREDATOR_V4_THERMAL_PROFILE_QUIET;
+    }
+    else
+    {
+        switch (cached_thermal_profile)
+        {
+        case ACER_PREDATOR_V4_THERMAL_PROFILE_QUIET:
+            tp = ACER_PREDATOR_V4_THERMAL_PROFILE_BALANCED;
+            break;
+        case ACER_PREDATOR_V4_THERMAL_PROFILE_BALANCED:
+            tp = ACER_PREDATOR_V4_THERMAL_PROFILE_PERFORMANCE;
+            break;
+        case ACER_PREDATOR_V4_THERMAL_PROFILE_PERFORMANCE:
+            tp = ACER_PREDATOR_V4_THERMAL_PROFILE_TURBO;
+            break;
+        case ACER_PREDATOR_V4_THERMAL_PROFILE_TURBO:
+        default:
+            tp = ACER_PREDATOR_V4_THERMAL_PROFILE_QUIET;
+            break;
+        }
+    }
+
+    if (tp == ACER_PREDATOR_V4_THERMAL_PROFILE_QUIET)
+    {
+        status = acer_set_fan_speed(0, 0);
+        if (ACPI_FAILURE(status))
+        {
+            mutex_unlock(&thermal_profile_lock);
+            return -EIO;
+        }
+    }
+
+    err = WMID_gaming_set_misc_setting(ACER_WMID_MISC_SETTING_PLATFORM_PROFILE, tp);
+    if (err)
+    {
+        mutex_unlock(&thermal_profile_lock);
+        return err;
+    }
+
+    cached_thermal_profile = tp;
+    requested_thermal_profile = tp;
+    cached_platform_profile = acer_thermal_profile_to_platform(tp);
+    if (tp != acer_predator_v4_max_perf)
+        last_non_turbo_profile = tp;
+    mutex_unlock(&thermal_profile_lock);
+
+    if (platform_profile_support && !IS_ERR_OR_NULL(platform_profile_device))
+        platform_profile_notify(platform_profile_device);
+
+    return 0;
+}
+
+static int acer_fixed_power_source_change(void)
+{
+    acpi_status status;
+    u64 on_AC;
+    int err, tp;
+
+    mutex_lock(&thermal_profile_lock);
+    status = WMI_gaming_execute_u64(
+        ACER_WMID_GET_GAMING_SYS_INFO_METHODID,
+        ACER_WMID_CMD_GET_PREDATOR_V4_BAT_STATUS, &on_AC);
+    if (ACPI_FAILURE(status))
+    {
+        mutex_unlock(&thermal_profile_lock);
+        return -EIO;
+    }
+
+    if (on_AC)
+        tp = requested_thermal_profile;
+    else if (cached_platform_profile == PLATFORM_PROFILE_LOW_POWER)
+        tp = ACER_PREDATOR_V4_THERMAL_PROFILE_QUIET;
+    else
+        tp = ACER_PREDATOR_V4_THERMAL_PROFILE_BALANCED;
+
+    if (tp == ACER_PREDATOR_V4_THERMAL_PROFILE_QUIET)
+    {
+        status = acer_set_fan_speed(0, 0);
+        if (ACPI_FAILURE(status))
+        {
+            mutex_unlock(&thermal_profile_lock);
+            return -EIO;
+        }
+    }
+
+    err = WMID_gaming_set_misc_setting(ACER_WMID_MISC_SETTING_PLATFORM_PROFILE, tp);
+    if (err)
+    {
+        mutex_unlock(&thermal_profile_lock);
+        return err;
+    }
+
+    cached_thermal_profile = tp;
+    mutex_unlock(&thermal_profile_lock);
+
+    if (platform_profile_support && !IS_ERR_OR_NULL(platform_profile_device))
+        platform_profile_notify(platform_profile_device);
+
+    return 0;
+}
+
 static int acer_thermal_profile_change(void)
 {
     /*
@@ -2532,6 +2767,9 @@ static int acer_thermal_profile_change(void)
         int tp, err;
         u64 on_AC;
         acpi_status status;
+
+        if (quirks->fixed_platform_profiles)
+            return acer_fixed_thermal_profile_change();
         err = WMID_gaming_get_misc_setting(ACER_WMID_MISC_SETTING_PLATFORM_PROFILE, &current_tp);
         if (err)
             return err;
@@ -2546,7 +2784,11 @@ static int acer_thermal_profile_change(void)
         /* On AC - define next profile transitions */
         if (!on_AC)
         {
-            if (current_tp == ACER_PREDATOR_V4_THERMAL_PROFILE_ECO)
+            if (quirks->fixed_platform_profiles && current_tp == ACER_PREDATOR_V4_THERMAL_PROFILE_QUIET)
+                tp = ACER_PREDATOR_V4_THERMAL_PROFILE_BALANCED;
+            else if (quirks->fixed_platform_profiles)
+                tp = ACER_PREDATOR_V4_THERMAL_PROFILE_QUIET;
+            else if (current_tp == ACER_PREDATOR_V4_THERMAL_PROFILE_ECO)
                 tp = ACER_PREDATOR_V4_THERMAL_PROFILE_BALANCED;
             else
                 tp = ACER_PREDATOR_V4_THERMAL_PROFILE_ECO;
@@ -2589,6 +2831,11 @@ static int acer_thermal_profile_change(void)
         if (err)
             return err;
 
+        mutex_lock(&thermal_profile_lock);
+        cached_thermal_profile = tp;
+        cached_platform_profile = acer_thermal_profile_to_platform(tp);
+        mutex_unlock(&thermal_profile_lock);
+
         /* the quiter you become the more you'll be able to hear! */
         if (tp == ACER_PREDATOR_V4_THERMAL_PROFILE_QUIET || tp == ACER_PREDATOR_V4_THERMAL_PROFILE_ECO)
         {
@@ -2602,7 +2849,8 @@ static int acer_thermal_profile_change(void)
         if (tp != acer_predator_v4_max_perf)
             last_non_turbo_profile = tp;
 
-        platform_profile_notify(platform_profile_device);
+        if (platform_profile_support && !IS_ERR_OR_NULL(platform_profile_device))
+            platform_profile_notify(platform_profile_device);
     }
 
     return 0;
@@ -2930,7 +3178,11 @@ static void acer_wmi_notify(union acpi_object *obj, void *context)
     case WMID_AC_EVENT:
         if (has_cap(ACER_CAP_PREDATOR_SENSE))
         {
-            if (return_value.key_num == 0)
+            if (quirks->fixed_platform_profiles)
+            {
+                acer_fixed_power_source_change();
+            }
+            else if (return_value.key_num == 0)
             {
                 /* store the current state when it is connected to AC*/
                 acer_predator_state_update(1);
@@ -3603,6 +3855,140 @@ static ssize_t predator_fan_speed_store(struct device *dev,
 
     return count;
 }
+
+static ssize_t damx_thermal_profile_show(struct device *dev,
+                                         struct device_attribute *attr,
+                                         char *buf)
+{
+    const char *profile;
+
+    mutex_lock(&thermal_profile_lock);
+    switch (cached_thermal_profile)
+    {
+    case ACER_PREDATOR_V4_THERMAL_PROFILE_QUIET:
+    case ACER_PREDATOR_V4_THERMAL_PROFILE_ECO:
+        profile = "quiet";
+        break;
+    case ACER_PREDATOR_V4_THERMAL_PROFILE_BALANCED:
+        profile = "balanced";
+        break;
+    case ACER_PREDATOR_V4_THERMAL_PROFILE_PERFORMANCE:
+        profile = "balanced-performance";
+        break;
+    case ACER_PREDATOR_V4_THERMAL_PROFILE_TURBO:
+        profile = "performance";
+        break;
+    default:
+        mutex_unlock(&thermal_profile_lock);
+        return -EOPNOTSUPP;
+    }
+    mutex_unlock(&thermal_profile_lock);
+
+    return sysfs_emit(buf, "%s\n", profile);
+}
+
+static ssize_t damx_thermal_profile_store(struct device *dev,
+                                          struct device_attribute *attr,
+                                          const char *buf, size_t count)
+{
+    enum platform_profile_option platform_profile;
+    acpi_status status;
+    u64 on_AC;
+    int err, tp;
+
+    if (sysfs_streq(buf, "quiet"))
+    {
+        tp = ACER_PREDATOR_V4_THERMAL_PROFILE_QUIET;
+        platform_profile = PLATFORM_PROFILE_LOW_POWER;
+    }
+    else if (sysfs_streq(buf, "balanced"))
+    {
+        tp = ACER_PREDATOR_V4_THERMAL_PROFILE_BALANCED;
+        platform_profile = PLATFORM_PROFILE_BALANCED;
+    }
+    else if (sysfs_streq(buf, "balanced-performance"))
+    {
+        tp = ACER_PREDATOR_V4_THERMAL_PROFILE_PERFORMANCE;
+        platform_profile = PLATFORM_PROFILE_PERFORMANCE;
+    }
+    else if (sysfs_streq(buf, "performance"))
+    {
+        tp = ACER_PREDATOR_V4_THERMAL_PROFILE_TURBO;
+        platform_profile = PLATFORM_PROFILE_PERFORMANCE;
+    }
+    else
+    {
+        return -EINVAL;
+    }
+
+    mutex_lock(&thermal_profile_lock);
+    status = WMI_gaming_execute_u64(
+        ACER_WMID_GET_GAMING_SYS_INFO_METHODID,
+        ACER_WMID_CMD_GET_PREDATOR_V4_BAT_STATUS, &on_AC);
+    if (ACPI_FAILURE(status))
+    {
+        mutex_unlock(&thermal_profile_lock);
+        return -EIO;
+    }
+
+    if (!on_AC && (tp == ACER_PREDATOR_V4_THERMAL_PROFILE_PERFORMANCE ||
+                   tp == ACER_PREDATOR_V4_THERMAL_PROFILE_TURBO))
+    {
+        mutex_unlock(&thermal_profile_lock);
+        return -EOPNOTSUPP;
+    }
+
+    if (tp == ACER_PREDATOR_V4_THERMAL_PROFILE_QUIET)
+    {
+        status = acer_set_fan_speed(0, 0);
+        if (ACPI_FAILURE(status))
+        {
+            mutex_unlock(&thermal_profile_lock);
+            return -EIO;
+        }
+    }
+
+    err = WMID_gaming_set_misc_setting(ACER_WMID_MISC_SETTING_PLATFORM_PROFILE, tp);
+    if (err)
+    {
+        mutex_unlock(&thermal_profile_lock);
+        return err;
+    }
+
+    cached_thermal_profile = tp;
+    requested_thermal_profile = tp;
+    cached_platform_profile = platform_profile;
+    if (tp != acer_predator_v4_max_perf)
+        last_non_turbo_profile = tp;
+    mutex_unlock(&thermal_profile_lock);
+
+    if (platform_profile_support && !IS_ERR_OR_NULL(platform_profile_device))
+        platform_profile_notify(platform_profile_device);
+
+    return count;
+}
+
+static ssize_t damx_thermal_profile_choices_show(struct device *dev,
+                                                 struct device_attribute *attr,
+                                                 char *buf)
+{
+    acpi_status status;
+    u64 on_AC;
+
+    mutex_lock(&thermal_profile_lock);
+    status = WMI_gaming_execute_u64(
+        ACER_WMID_GET_GAMING_SYS_INFO_METHODID,
+        ACER_WMID_CMD_GET_PREDATOR_V4_BAT_STATUS, &on_AC);
+    mutex_unlock(&thermal_profile_lock);
+
+    if (ACPI_FAILURE(status))
+        return -EIO;
+
+    if (!on_AC)
+        return sysfs_emit(buf, "quiet balanced\n");
+
+    return sysfs_emit(buf, "quiet balanced balanced-performance performance\n");
+}
 /*
  * persistent predator states.
  */
@@ -3620,18 +4006,28 @@ struct power_states
 } __attribute__((packed));
 
 static struct power_states current_states = {
-    .battery_state = {0, 0, ACER_PREDATOR_V4_THERMAL_PROFILE_ECO},
+    .battery_state = {0, 0, ACER_PREDATOR_V4_THERMAL_PROFILE_QUIET},
     .ac_state = {0, 0, ACER_PREDATOR_V4_THERMAL_PROFILE_BALANCED}};
 
 static int acer_predator_state_update(int value)
 {
     u8 current_tp;
-    int tp, err;
-    err = WMID_gaming_get_misc_setting(
-        ACER_WMID_MISC_SETTING_PLATFORM_PROFILE,
-        &current_tp);
-    if (err)
-        return err;
+    int err, tp;
+
+    if (quirks->fixed_platform_profiles)
+    {
+        mutex_lock(&thermal_profile_lock);
+        current_tp = cached_thermal_profile;
+        mutex_unlock(&thermal_profile_lock);
+    }
+    else
+    {
+        err = WMID_gaming_get_misc_setting(
+            ACER_WMID_MISC_SETTING_PLATFORM_PROFILE, &current_tp);
+        if (err)
+            return err;
+    }
+
     switch (current_tp)
     {
     case ACER_PREDATOR_V4_THERMAL_PROFILE_TURBO:
@@ -3676,10 +4072,20 @@ static int acer_predator_state_update(int value)
 
 static acpi_status acer_predator_state_restore(int value)
 {
-    int err = WMID_gaming_set_misc_setting(ACER_WMID_MISC_SETTING_PLATFORM_PROFILE,
-                                           value == 0 ? current_states.battery_state.thermal_profile : current_states.ac_state.thermal_profile);
+    int tp = value == 0 ? current_states.battery_state.thermal_profile : current_states.ac_state.thermal_profile;
+    int err;
+
+    mutex_lock(&thermal_profile_lock);
+    err = WMID_gaming_set_misc_setting(ACER_WMID_MISC_SETTING_PLATFORM_PROFILE, tp);
     if (err)
+    {
+        mutex_unlock(&thermal_profile_lock);
         return err;
+    }
+
+    cached_thermal_profile = tp;
+    cached_platform_profile = acer_thermal_profile_to_platform(tp);
+    mutex_unlock(&thermal_profile_lock);
 
     acpi_status status = acer_set_fan_speed(value == 0 ? current_states.battery_state.cpu_fan_speed : current_states.ac_state.cpu_fan_speed,
                                             value == 0 ? current_states.battery_state.gpu_fan_speed : current_states.ac_state.gpu_fan_speed);
@@ -3694,9 +4100,31 @@ static acpi_status acer_predator_state_restore(int value)
 static int acer_predator_state_load(void)
 {
     u64 on_AC;
+    u8 current_tp;
     struct file *file;
     ssize_t len;
+    int err;
     acpi_status status;
+
+    if (quirks->fixed_platform_profiles)
+    {
+        mutex_lock(&thermal_profile_lock);
+        err = WMID_gaming_get_misc_setting(
+            ACER_WMID_MISC_SETTING_PLATFORM_PROFILE, &current_tp);
+        if (!err && acer_thermal_profile_is_valid(current_tp))
+        {
+            cached_thermal_profile = current_tp;
+            requested_thermal_profile = current_tp;
+            cached_platform_profile = acer_thermal_profile_to_platform(current_tp);
+        }
+        else if (!err)
+        {
+            pr_warn("Ignoring unknown initial thermal profile: 0x%x\n", current_tp);
+            err = -EOPNOTSUPP;
+        }
+        mutex_unlock(&thermal_profile_lock);
+        return err;
+    }
 
     file = filp_open(STATE_FILE, O_RDONLY, 0);
     if (!IS_ERR(file))
@@ -3748,6 +4176,9 @@ static int acer_predator_state_save(void)
     acpi_status status;
     struct file *file;
     ssize_t len;
+
+    if (quirks->fixed_platform_profiles)
+        return 0;
 
     status = WMI_gaming_execute_u64(
         ACER_WMID_GET_GAMING_SYS_INFO_METHODID,
@@ -3913,7 +4344,38 @@ static struct device_attribute battery_calibration = __ATTR(battery_calibration,
 static struct device_attribute battery_limiter = __ATTR(battery_limiter, 0644, predator_battery_limit_show, predator_battery_limit_store);
 static struct device_attribute fan_speed = __ATTR(fan_speed, 0644, predator_fan_speed_show, predator_fan_speed_store);
 static struct device_attribute lcd_override = __ATTR(lcd_override, 0644, predator_lcd_override_show, predator_lcd_override_store);
+static struct device_attribute damx_thermal_profile = __ATTR(damx_thermal_profile, 0644, damx_thermal_profile_show, damx_thermal_profile_store);
+static struct device_attribute damx_thermal_profile_choices = __ATTR(damx_thermal_profile_choices, 0444, damx_thermal_profile_choices_show, NULL);
 static struct attribute *predator_sense_attrs[] = {
+    &dev_attr_version.attr,
+    &damx_thermal_profile.attr,
+    &damx_thermal_profile_choices.attr,
+    &lcd_override.attr,
+    &fan_speed.attr,
+    &battery_limiter.attr,
+    &battery_calibration.attr,
+    &usb_charging.attr,
+    &backlight_timeout.attr,
+    &boot_animation_sound.attr,
+    NULL};
+
+static umode_t predator_sense_attr_is_visible(struct kobject *kobj,
+                                              struct attribute *attr, int n)
+{
+    if ((attr == &damx_thermal_profile.attr ||
+         attr == &damx_thermal_profile_choices.attr) &&
+        !quirks->fixed_platform_profiles)
+        return 0;
+
+    return attr->mode;
+}
+
+static struct attribute_group preadtor_sense_attr_group = {
+    .name = "predator_sense",
+    .attrs = predator_sense_attrs,
+    .is_visible = predator_sense_attr_is_visible};
+
+static struct attribute *nitro_sense_v4_attrs[] = {
     &dev_attr_version.attr,
     &lcd_override.attr,
     &fan_speed.attr,
@@ -3924,11 +4386,8 @@ static struct attribute *predator_sense_attrs[] = {
     &boot_animation_sound.attr,
     NULL};
 
-static struct attribute_group preadtor_sense_attr_group = {
-    .name = "predator_sense", .attrs = predator_sense_attrs};
-
 static struct attribute_group nitro_sense_v4_attr_group = {
-    .name = "nitro_sense", .attrs = predator_sense_attrs};
+    .name = "nitro_sense", .attrs = nitro_sense_v4_attrs};
 /* nitro sense attributes */
 static struct attribute *nitro_sense_attrs[] = {
     &dev_attr_version.attr,
@@ -4465,6 +4924,13 @@ static int acer_platform_probe(struct platform_device *device)
     if (err)
         goto error_rfkill;
 
+    if (quirks->fixed_platform_profiles && has_cap(ACER_CAP_PREDATOR_SENSE))
+    {
+        err = acer_predator_state_load();
+        if (err)
+            pr_warn("Failed to initialize thermal profile cache: %d\n", err);
+    }
+
     if (has_cap(ACER_CAP_PLATFORM_PROFILE))
     {
         err = acer_platform_profile_setup(device);
@@ -4477,7 +4943,8 @@ static int acer_platform_probe(struct platform_device *device)
         err = sysfs_create_group(&device->dev.kobj, &preadtor_sense_attr_group);
         if (err)
             goto error_predator_sense;
-        acer_predator_state_load();
+        if (!quirks->fixed_platform_profiles)
+            acer_predator_state_load();
     }
     if (has_cap(ACER_CAP_PREDATOR_SENSE) && has_cap(ACER_CAP_NITRO_SENSE_V4))
     {
@@ -4534,12 +5001,12 @@ static void acer_platform_remove(struct platform_device *device)
         acer_led_exit();
     if (has_cap(ACER_CAP_BRIGHTNESS))
         acer_backlight_exit();
-    if (has_cap(ACER_CAP_PREDATOR_SENSE) & !has_cap(ACER_CAP_NITRO_SENSE_V4))
+    if (has_cap(ACER_CAP_PREDATOR_SENSE) && !has_cap(ACER_CAP_NITRO_SENSE_V4))
     {
         sysfs_remove_group(&device->dev.kobj, &preadtor_sense_attr_group);
         acer_predator_state_save();
     }
-    if (has_cap(ACER_CAP_PREDATOR_SENSE) & has_cap(ACER_CAP_NITRO_SENSE_V4))
+    if (has_cap(ACER_CAP_PREDATOR_SENSE) && has_cap(ACER_CAP_NITRO_SENSE_V4))
     {
         sysfs_remove_group(&device->dev.kobj, &nitro_sense_v4_attr_group);
         acer_predator_state_save();

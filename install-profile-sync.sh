@@ -7,7 +7,7 @@ if [[ ${EUID} -ne 0 ]]; then
 fi
 
 repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-driver_repo="/home/guillemvg/Projectes/Div-Linuwu-Sense"
+driver_repo="${repo_dir}/driver"
 daemon_src="${repo_dir}/DAMM-Daemon"
 daemon_dst="/opt/damx/daemon-profile-sync"
 service_src="${repo_dir}/damx-daemon-profile-sync.service"
