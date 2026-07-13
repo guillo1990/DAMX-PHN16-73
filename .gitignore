@@ -1,5 +1,6 @@
 
 DivAcerManagerMax/obj/
+DivAcerManagerMax/bin/
 
 DivAcerManagerMax/bin/Release/net9.0/linux-x64/
 
@@ -14,3 +15,16 @@ buildPublish/
 DAMM-Daemon/build/
 
 DAMM-Daemon/dist/
+
+__pycache__/
+*.py[cod]
+
+# Kernel module build artifacts
+*.ko
+*.mod
+*.mod.c
+*.mod.o
+*.o
+*.cmd
+Module.symvers
+modules.order

@@ -229,6 +229,21 @@ public class DAMXClient : IDisposable
         throw new Exception($"Failed to get settings: {error}");
     }
 
+    public async Task<ThermalProfileSettings> GetThermalProfileAsync()
+    {
+        var response = await SendCommandAsync("get_thermal_profile");
+        var success = response.RootElement.GetProperty("success").GetBoolean();
+
+        if (success)
+        {
+            var data = response.RootElement.GetProperty("data");
+            return JsonSerializer.Deserialize<ThermalProfileSettings>(data.GetRawText()) ?? new ThermalProfileSettings();
+        }
+
+        var error = response.RootElement.GetProperty("error").GetString();
+        throw new Exception($"Failed to get thermal profile: {error}");
+    }
+
     /// <summary>
     ///     Set thermal profile
     /// </summary>

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Avalonia;
@@ -10,6 +11,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
+using Avalonia.Threading;
 using MsBox.Avalonia;
 
 namespace DivAcerManagerMax;
@@ -41,6 +43,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _isCalibrating;
     private bool _isConnected;
     private bool _isManualFanControl;
+    private bool _isRefreshingThermalProfile;
     private int _keyboardBrightness = 100;
     private Slider _keyBrightnessSlider;
     private TextBlock _keyBrightnessText;
@@ -68,6 +71,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private TextBlock _supportedFeaturesTextBlock;
     private TextBlock _thermalProfileInfoText;
     private RadioButton _turboProfileButton;
+    private readonly DispatcherTimer _thermalProfileRefreshTimer;
     private Button _usbChargeButton;
     private ComboBox _usbChargingComboBox;
     private ColorPicker _zone1ColorPicker;
@@ -80,7 +84,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         InitializeComponent();
         DataContext = this;
         _client = new DAMXClient();
+        _thermalProfileRefreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _thermalProfileRefreshTimer.Tick += ThermalProfileRefreshTimer_Tick;
         Loaded += MainWindow_Loaded;
+        Closed += MainWindow_Closed;
     }
 
     public bool IsCalibrating
@@ -99,6 +106,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         BindControls();
         AttachEventHandlers();
         InitializeAsync();
+    }
+
+    private void MainWindow_Closed(object? sender, EventArgs e)
+    {
+        _thermalProfileRefreshTimer.Stop();
+        _client.Dispose();
     }
 
     private void BindControls()
@@ -299,7 +312,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _lowPowerProfileButton.IsVisible = _lowPowerProfileButton.IsEnabled && !isPluggedIn;
 
         if (_quietProfileButton != null)
-            _quietProfileButton.IsVisible = _quietProfileButton.IsEnabled && isPluggedIn;
+            _quietProfileButton.IsVisible = _quietProfileButton.IsEnabled;
 
         if (_balancedProfileButton != null)
             _balancedProfileButton.IsVisible = _balancedProfileButton.IsEnabled;
@@ -327,9 +340,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 _daemonErrorGrid.IsVisible = false;
                 await LoadSettingsAsync();
+                _thermalProfileRefreshTimer.Start();
             }
             else
             {
+                _thermalProfileRefreshTimer.Stop();
                 await ShowMessageBox(
                     "Error Connecting to Daemon",
                     "Failed to connect to DAMX daemon. The Daemon may be initializing please wait.");
@@ -340,6 +355,31 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             await ShowMessageBox("Error while initializing", $"Error initializing: {ex.Message}");
             _daemonErrorGrid.IsVisible = true;
+        }
+    }
+
+    private async void ThermalProfileRefreshTimer_Tick(object? sender, EventArgs e)
+    {
+        if (!_isConnected || _isRefreshingThermalProfile) return;
+
+        try
+        {
+            var thermalProfile = await _client.GetThermalProfileAsync();
+            if (_settings.ThermalProfile.Current == thermalProfile.Current &&
+                _settings.ThermalProfile.Available.SequenceEqual(thermalProfile.Available)) return;
+
+            _isRefreshingThermalProfile = true;
+            _settings.ThermalProfile = thermalProfile;
+            UpdateProfileButtons();
+            UpdateUIBasedOnPowerSource();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to refresh thermal profile: {ex.Message}");
+        }
+        finally
+        {
+            _isRefreshingThermalProfile = false;
         }
     }
 
@@ -371,7 +411,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     (_lowPowerProfileButton,
                         "Prioritizes energy efficiency, reduces performance to extend battery life.", true, false)
                 },
-                { "quiet", (_quietProfileButton, "Minimizes noise, prioritizes low power and cooling.", false, true) },
+                { "quiet", (_quietProfileButton, "Minimizes noise, prioritizes low power and cooling.", true, true) },
                 {
                     "balanced",
                     (_balancedProfileButton, "Optimal mix of performance and noise for everyday tasks.", true, true)
@@ -599,7 +639,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async void ProfileButton_Checked(object sender, RoutedEventArgs e)
     {
-        if (!_isConnected || sender is not RadioButton button || button.IsChecked != true) return;
+        // External profile updates select a button programmatically and must not write back to KDE.
+        if (_isRefreshingThermalProfile || !_isConnected || sender is not RadioButton button || button.IsChecked != true) return;
 
         var profile = button.Name switch
         {

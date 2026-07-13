@@ -1,0 +1,15 @@
+[Unit]
+Description=DAMX Daemon for Acer laptops
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python /opt/damx/daemon-profile-sync/DAMX-Daemon.py
+Restart=on-failure
+RestartSec=5
+User=root
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

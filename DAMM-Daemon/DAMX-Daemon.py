@@ -99,6 +99,7 @@ class DAMXManager:
             self._reset_restart_attempts()
         
         self.base_path = self._get_base_path()
+        self.thermal_profile_path, self.thermal_profile_choices_path = self._get_thermal_profile_paths()
         self.has_four_zone_kb = self._check_four_zone_kb()
         self.current_modprobe_param = self._detect_current_modprobe_param()
 
@@ -107,6 +108,7 @@ class DAMXManager:
 
         log.info(f"Detected laptop type: {self.laptop_type.name}")
         log.info(f"Base path: {self.base_path}")
+        log.info(f"Thermal profile path: {self.thermal_profile_path}")
         log.info(f"Four-zone keyboard: {'Yes' if self.has_four_zone_kb else 'No'}")
         log.info(f"Available features: {', '.join(self.available_features)}")
 
@@ -368,6 +370,19 @@ class DAMXManager:
         else:
             return ""
 
+    def _get_thermal_profile_paths(self) -> Tuple[str, str]:
+        """Use DAMX-specific profiles when the driver exposes both endpoints."""
+        profile_path = os.path.join(self.base_path, "damx_thermal_profile")
+        choices_path = os.path.join(self.base_path, "damx_thermal_profile_choices")
+
+        if os.path.exists(profile_path) and os.path.exists(choices_path):
+            return profile_path, choices_path
+
+        return (
+            "/sys/firmware/acpi/platform_profile",
+            "/sys/firmware/acpi/platform_profile_choices",
+        )
+
     def get_driver_version(self) -> str:
         """Get Driver version"""
         version_file = os.path.join(self.base_path, "version")
@@ -385,8 +400,7 @@ class DAMXManager:
         """Detect which features are available on the current laptop"""
         available = set()
 
-        # Always check thermal profile since it's ACPI standard
-        if os.path.exists("/sys/firmware/acpi/platform_profile"):
+        if os.path.exists(self.thermal_profile_path):
             available.add("thermal_profile")
 
         # Only check other features if laptop type is recognized
@@ -446,7 +460,7 @@ class DAMXManager:
         """Get current thermal profile"""
         if "thermal_profile" not in self.available_features:
             return ""
-        return self._read_file("/sys/firmware/acpi/platform_profile")
+        return self._read_file(self.thermal_profile_path)
 
     def set_thermal_profile(self, profile: str) -> bool:
         """Set thermal profile"""
@@ -458,14 +472,14 @@ class DAMXManager:
             log.error(f"Invalid thermal profile: {profile}. Available profiles: {available_profiles}")
             return False
 
-        return self._write_file("/sys/firmware/acpi/platform_profile", profile)
+        return self._write_file(self.thermal_profile_path, profile)
 
     def get_thermal_profile_choices(self) -> List[str]:
         """Get available thermal profiles"""
         if "thermal_profile" not in self.available_features:
             return []
 
-        choices = self._read_file("/sys/firmware/acpi/platform_profile_choices")
+        choices = self._read_file(self.thermal_profile_choices_path)
         return choices.split() if choices else []
 
     def get_backlight_timeout(self) -> str:
