@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace DivAcerManagerMax;
@@ -31,6 +32,7 @@ public class DAMXClient : IDisposable
 
     private bool _disposed;
     private Socket _socket;
+    private readonly SemaphoreSlim _commandLock = new(1, 1);
 
     public DAMXClient()
     {
@@ -148,60 +150,68 @@ public class DAMXClient : IDisposable
 
     public async Task<JsonDocument> SendCommandAsync(string command, Dictionary<string, object> parameters = null)
     {
-        var attempt = 0;
-        while (attempt < MaxRetryAttempts)
-            try
-            {
-                if (!IsConnected)
+        await _commandLock.WaitAsync();
+        try
+        {
+            var attempt = 0;
+            while (attempt < MaxRetryAttempts)
+                try
                 {
-                    await ConnectAsync();
-                    if (!IsConnected) throw new InvalidOperationException("Not connected to daemon");
+                    if (!IsConnected)
+                    {
+                        await ConnectAsync();
+                        if (!IsConnected) throw new InvalidOperationException("Not connected to daemon");
+                    }
+
+                    var request = new
+                    {
+                        command,
+                        @params = parameters ?? new Dictionary<string, object>()
+                    };
+
+                    var requestJson = JsonSerializer.Serialize(request);
+                    var requestBytes = Encoding.UTF8.GetBytes(requestJson);
+
+                    // Send request
+                    await _socket.SendAsync(requestBytes, SocketFlags.None);
+
+                    // Receive response
+                    var buffer = new byte[4096];
+                    var received = await _socket.ReceiveAsync(buffer, SocketFlags.None);
+
+                    if (received > 0)
+                    {
+                        var responseJson = Encoding.UTF8.GetString(buffer, 0, received);
+                        return JsonDocument.Parse(responseJson);
+                    }
+
+                    // If we got here, we received 0 bytes - connection was closed
+                    IsConnected = false;
+                    attempt++;
+                    await Task.Delay(RetryDelayMs);
+                }
+                catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset ||
+                                                 ex.SocketErrorCode == SocketError.Shutdown ||
+                                                 ex.SocketErrorCode == SocketError.ConnectionAborted)
+                {
+                    // Connection was reset - try to reconnect
+                    IsConnected = false;
+                    attempt++;
+                    await Task.Delay(RetryDelayMs);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error communicating with daemon: {ex.Message}");
+                    IsConnected = false;
+                    throw;
                 }
 
-                var request = new
-                {
-                    command,
-                    @params = parameters ?? new Dictionary<string, object>()
-                };
-
-                var requestJson = JsonSerializer.Serialize(request);
-                var requestBytes = Encoding.UTF8.GetBytes(requestJson);
-
-                // Send request
-                await _socket.SendAsync(requestBytes, SocketFlags.None);
-
-                // Receive response
-                var buffer = new byte[4096];
-                var received = await _socket.ReceiveAsync(buffer, SocketFlags.None);
-
-                if (received > 0)
-                {
-                    var responseJson = Encoding.UTF8.GetString(buffer, 0, received);
-                    return JsonDocument.Parse(responseJson);
-                }
-
-                // If we got here, we received 0 bytes - connection was closed
-                IsConnected = false;
-                attempt++;
-                await Task.Delay(RetryDelayMs);
-            }
-            catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset ||
-                                             ex.SocketErrorCode == SocketError.Shutdown ||
-                                             ex.SocketErrorCode == SocketError.ConnectionAborted)
-            {
-                // Connection was reset - try to reconnect
-                IsConnected = false;
-                attempt++;
-                await Task.Delay(RetryDelayMs);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error communicating with daemon: {ex.Message}");
-                IsConnected = false;
-                throw;
-            }
-
-        throw new IOException($"Failed to communicate with daemon after {MaxRetryAttempts} attempts");
+            throw new IOException($"Failed to communicate with daemon after {MaxRetryAttempts} attempts");
+        }
+        finally
+        {
+            _commandLock.Release();
+        }
     }
 
     /// <summary>
@@ -495,6 +505,7 @@ public class DAMXClient : IDisposable
         {
             Disconnect();
             _socket?.Dispose();
+            _commandLock.Dispose();
         }
 
         _disposed = true;

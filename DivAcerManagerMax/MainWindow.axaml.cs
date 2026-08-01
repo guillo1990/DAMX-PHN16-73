@@ -44,6 +44,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _isConnected;
     private bool _isManualFanControl;
     private bool _isRefreshingThermalProfile;
+    private bool _isApplyingSettings;
+    private bool _thermalProfilePollInProgress;
     private int _keyboardBrightness = 100;
     private Slider _keyBrightnessSlider;
     private TextBlock _keyBrightnessText;
@@ -360,10 +362,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async void ThermalProfileRefreshTimer_Tick(object? sender, EventArgs e)
     {
-        if (!_isConnected || _isRefreshingThermalProfile) return;
+        if (!_isConnected || _isRefreshingThermalProfile || _thermalProfilePollInProgress) return;
 
         try
         {
+            _thermalProfilePollInProgress = true;
             var thermalProfile = await _client.GetThermalProfileAsync();
             if (_settings.ThermalProfile.Current == thermalProfile.Current &&
                 _settings.ThermalProfile.Available.SequenceEqual(thermalProfile.Available)) return;
@@ -380,6 +383,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         finally
         {
             _isRefreshingThermalProfile = false;
+            _thermalProfilePollInProgress = false;
         }
     }
 
@@ -388,13 +392,29 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         try
         {
             _settings = await _client.GetAllSettingsAsync() ?? new DAMXSettings();
-            ApplySettingsToUI();
+            try
+            {
+                _isApplyingSettings = true;
+                ApplySettingsToUI();
+            }
+            finally
+            {
+                _isApplyingSettings = false;
+            }
         }
         catch (Exception ex)
         {
             await ShowMessageBox("Error while loading settings", $"Error loading settings: {ex.Message}");
             _settings = new DAMXSettings();
-            ApplySettingsToUI();
+            try
+            {
+                _isApplyingSettings = true;
+                ApplySettingsToUI();
+            }
+            finally
+            {
+                _isApplyingSettings = false;
+            }
         }
     }
 
@@ -639,8 +659,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async void ProfileButton_Checked(object sender, RoutedEventArgs e)
     {
-        // External profile updates select a button programmatically and must not write back to KDE.
-        if (_isRefreshingThermalProfile || !_isConnected || sender is not RadioButton button || button.IsChecked != true) return;
+        // External profile updates or programmatic UI loads select a button programmatically and must not write back.
+        if (_isRefreshingThermalProfile || _isApplyingSettings || !_isConnected || sender is not RadioButton button || button.IsChecked != true) return;
 
         var profile = button.Name switch
         {
