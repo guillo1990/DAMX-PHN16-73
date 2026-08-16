@@ -28,3 +28,8 @@ __pycache__/
 *.cmd
 Module.symvers
 modules.order
+
+.idea/
+*.png~
+*~
+repomix-output.xml

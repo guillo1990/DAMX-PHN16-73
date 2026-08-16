@@ -1,6 +1,6 @@
 # DAMX PHN16-73
 
-Private fork of [Div Acer Manager Max](https://github.com/PXDiv/Div-Acer-Manager-Max) and [Linuwu Sense](https://github.com/PXDiv/Div-Linuwu-Sense) for the Acer Predator Helios Neo 16 AI `PHN16-73` on CachyOS with KDE Plasma.
+Fork of [Div Acer Manager Max](https://github.com/PXDiv/Div-Acer-Manager-Max) and [Linuwu Sense](https://github.com/PXDiv/Div-Linuwu-Sense) for the Acer Predator Helios Neo 16 AI `PHN16-73` on CachyOS with KDE Plasma.
 
 It packages the patched Linuwu Sense driver in `driver/`, a DAMX daemon that uses the driver-specific thermal-profile interface, and a DAMX GUI that follows profile changes made outside the application.
 
