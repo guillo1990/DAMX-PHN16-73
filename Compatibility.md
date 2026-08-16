@@ -1,4 +1,7 @@
 # Compatiblitiy List for DAMX:
+
+> This compatibility list is retained from upstream DAMX. This fork only adds and tests native support for `Predator PHN16-73`. For other models, use [upstream DAMX](https://github.com/PXDiv/Div-Acer-Manager-Max).
+
 If your device isn’t listed in the compatibility table — don’t worry! You can still download and try DAMX. If your laptop is compatible, it may work out of the box. If not, you can add support by creating a custom configuration for your system.
 
 DAMX is primarily built for modern Acer laptops (2022 and newer) that use WMI protocols.

@@ -1,5 +1,7 @@
 # ❓ Frequently Asked Questions (FAQ)
 
+> This FAQ is retained from upstream DAMX. This fork only adds and tests native support for `Predator PHN16-73`. For other models, use [upstream DAMX](https://github.com/PXDiv/Div-Acer-Manager-Max).
+
 ### 🔧 Driver Installation Fails
 
 There are several common reasons for driver installation issues:

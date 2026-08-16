@@ -1,8 +1,10 @@
 # DAMX PHN16-73
 
-Fork of [Div Acer Manager Max](https://github.com/PXDiv/Div-Acer-Manager-Max) and [Linuwu Sense](https://github.com/PXDiv/Div-Linuwu-Sense) for the Acer Predator Helios Neo 16 AI `PHN16-73` on CachyOS with KDE Plasma.
+Fork of [Div Acer Manager Max](https://github.com/PXDiv/Div-Acer-Manager-Max) and [Linuwu Sense](https://github.com/PXDiv/Div-Linuwu-Sense) for the Acer Predator Helios Neo 16 AI `PHN16-73` on Linux.
 
 It packages the patched Linuwu Sense driver in `driver/`, a DAMX daemon that uses the driver-specific thermal-profile interface, and a DAMX GUI that follows profile changes made outside the application.
+
+Tested on CachyOS with KDE Plasma. The same stack should work on other systemd distributions with DKMS, matching kernel headers, and [power-profiles-daemon](https://gitlab.freedesktop.org/upower/power-profiles-daemon).
 
 > [!WARNING]
 > This fork was developed and tested only on `Acer Predator PHN16-73`. It changes low-level WMI/EC settings. Keep the rollback backup, do not use it on another model without adapting and testing the driver, and reboot after installing or rolling back the DKMS module.
@@ -12,24 +14,26 @@ It packages the patched Linuwu Sense driver in `driver/`, a DAMX daemon that use
 - Adds native DMI support for `Acer Predator PHN16-73` using the Predator v4 quirk.
 - Does not enable four-zone keyboard RGB for this model.
 - Adds `damx_thermal_profile` and `damx_thermal_profile_choices` sysfs interfaces for DAMX.
-- Keeps KDE Power Profiles and DAMX thermal profiles synchronized.
+- Keeps power-profiles-daemon and DAMX thermal profiles synchronized.
 - Shows Quiet in DAMX on both battery and AC.
-- Refreshes the DAMX GUI every second while it is open, without writing an externally selected profile back to KDE.
-- Builds the module through DKMS for every installed kernel with headers. CachyOS kernels are built with LLVM.
+- Refreshes the DAMX GUI every second while it is open, without writing an externally selected profile back to the desktop power profile.
+- Builds the module through DKMS for every installed kernel with headers.
 
 ## Profile Mapping
 
-| KDE Power Profiles | DAMX on battery | DAMX on AC |
+| Power Profiles | DAMX on battery | DAMX on AC |
 | --- | --- | --- |
-| Power Save | Quiet | Quiet |
+| Power Saver | Quiet | Quiet |
 | Balanced | Balanced | Balanced |
 | Performance | Balanced | Performance |
 
-DAMX Turbo maps to KDE Performance. Turbo is intentionally available only from DAMX while connected to AC.
+DAMX Turbo maps to Performance. Turbo is intentionally available only from DAMX while connected to AC.
 
-## Clean CachyOS Installation
+The mapping uses `powerprofilesctl` and `/sys/firmware/acpi/platform_profile`, so it works with KDE, GNOME, or any other desktop that talks to power-profiles-daemon.
 
-These steps assume a fresh CachyOS KDE installation and an active Internet connection.
+## Installation
+
+These steps assume systemd, an active Internet connection, and a kernel of 6.13 or newer.
 
 ### 1. Check the machine and kernel
 
@@ -40,13 +44,28 @@ cat /sys/class/dmi/id/product_name
 uname -r
 ```
 
-The product name must be `Predator PHN16-73`. Install headers matching every kernel that you intend the DKMS module to support. For the default CachyOS kernel:
+The product name must be `Predator PHN16-73`. Install headers matching every kernel that you intend the DKMS module to support.
+
+Arch / CachyOS:
 
 ```bash
 sudo pacman -Syu --needed base-devel dkms git python power-profiles-daemon linux-cachyos-headers
 ```
 
-If `uname -r` does not belong to the default CachyOS kernel, install the corresponding headers for that kernel instead. Reboot after a kernel update before continuing.
+On CachyOS, replace `linux-cachyos-headers` if `uname -r` belongs to another installed kernel. Debian / Ubuntu:
+
+```bash
+sudo apt update
+sudo apt install --yes build-essential dkms git python3 power-profiles-daemon "linux-headers-$(uname -r)"
+```
+
+Fedora:
+
+```bash
+sudo dnf install -y dkms gcc make git python3 power-profiles-daemon "kernel-devel-uname-r == $(uname -r)"
+```
+
+Reboot after a kernel update before continuing.
 
 ### 2. Install DAMX upstream without its driver
 
@@ -56,7 +75,7 @@ Do not install the upstream Linuwu Sense driver: this repository supplies its ow
 
 ### 3. Clone this fork and build the GUI
 
-Install a .NET 9 SDK from the CachyOS/Arch repositories or the official Microsoft packages, then clone the repository:
+Install a .NET 9 SDK from your distribution repositories or the official Microsoft packages, then clone the repository:
 
 ```bash
 git clone https://github.com/guillo1990/DAMX-PHN16-73.git
@@ -105,10 +124,10 @@ The test changes profiles temporarily and restores the initial profile on exit.
 
 ## Daily Use
 
-- Use KDE Power Profiles for Power Save, Balanced, and Performance.
+- Use the desktop Power Profiles applet for Power Saver, Balanced, and Performance.
 - Use DAMX for Quiet, Balanced, Performance, fan controls, and Turbo on AC.
-- DAMX updates its selected thermal-profile button within about one second after a KDE profile change.
-- DAMX does not need to remain open for KDE and daemon synchronization to work.
+- DAMX updates its selected thermal-profile button within about one second after a desktop power-profile change.
+- DAMX does not need to remain open for power-profiles-daemon and daemon synchronization to work.
 
 ## Rollback
 
@@ -128,6 +147,7 @@ The profile rollback uses the path recorded in `/var/backups/damx-profile-sync/l
 - Confirm the active module: `modinfo linuwu_sense | grep -E 'version|srcversion'`.
 - Confirm the interface exists: `cat /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/damx_thermal_profile_choices`.
 - If DKMS fails, ensure headers exist for the affected kernel under `/lib/modules/<kernel>/build`.
+- Kernels built with Clang, such as the default CachyOS kernels, need the LLVM toolchain available when DKMS compiles the module.
 - If DAMX reports `UNKNOWN`, confirm that the system DMI product name is exactly `Predator PHN16-73` and reboot rather than attempting a module hot reload.
 
 ## Upstream and License
